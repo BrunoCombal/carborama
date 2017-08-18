@@ -31,6 +31,7 @@ from carborama_dialog import CarboramaDialog
 import os.path
 import doMMUCounting
 from os.path import expanduser
+import string
 
 
 class Carborama:

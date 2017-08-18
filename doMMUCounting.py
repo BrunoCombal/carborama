@@ -4,6 +4,7 @@ import time
 import json
 import numpy
 import report_mmu
+from datetime import datetime
 
 # import GDAL/OGR modules
 try:
@@ -564,11 +565,16 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
 
         print 'G', outGT
         try :
+            lastProgress = datetime.now()
             c, r = 0,0
             thisC, thisR = 0,0
             while c+kernel_size <= master_cols:
-                progress.setValue(int(100*c/master_cols) )
-                print c, master_cols
+                thisProgress = datetime.now()
+                timeDiff = thisProgress - lastProgress
+                if  timeDiff.seconds> 2:
+                    progress.setValue(int(100*c/master_rows))
+                    lastProgress = thisProgress
+                #print c, master_cols
                 #tmp = master_ds.GetRasterBand(1).ReadAsArray(0, r, kernel_size, out_rows*kernel_size).astype(numpy.byte)
                 #inBFMTMP = wefmFID.GetRasterBand(1).ReadAsArray(0, r, kernel_size, out_rows*kernel_size).astype(numpy.float)
                 while r+kernel_size <= master_rows:
@@ -885,19 +891,21 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         OUT_FF = None
         OUT_NFNF = None
 
-        thisIface.addRasterLayer(outname+'_change.tif', '{} change'.format())
+        print 'H23'
+        thisIface.addRasterLayer(outname+'_change.tif', '{} change'.format(outBasename) )
 
         # --------------------------------------------------------------------------
         # save  BIOMASS
         # --------------------------------------------------------------------------
         try:
+            print 'J1'
             driver = gdal.GetDriverByName("GTiff")
             dst_ds = driver.Create( outname+'_biomass.tif', out_cols, out_rows,3, gdal.GDT_Float32, options = [ 'COMPRESS=LZW','BIGTIFF=IF_SAFER' ])
             dst_ds.SetGeoTransform( outGT )
             dst_ds.SetProjection( master_ds.GetProjectionRef())
             if useConversionMapBool:
-                dst_ds.SetMetadata({'Impact_product_type': 'MMU biomass', 'Impact_operation': "degradation",
-                                    'Impact_band_interpretation': '1:FNF1*biomass_factor_map, 2:FNF2*biomass_factor_map, 3:(FNF1+FNF2)*biomass_factor_map'})
+                #dst_ds.SetMetadata({'Impact_product_type': 'MMU biomass', 'Impact_operation': "degradation",
+                #                    'Impact_band_interpretation': '1:FNF1*biomass_factor_map, 2:FNF2*biomass_factor_map, 3:(FNF1+FNF2)*biomass_factor_map'})
                 dst_ds.GetRasterBand(1).WriteArray(OUT_EMP1)
                 dst_ds.GetRasterBand(2).WriteArray(OUT_EMP2)
                 dst_ds.GetRasterBand(3).WriteArray( OUT_EMP1 + OUT_EMP2 )
@@ -916,7 +924,8 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         OUT_FNF1 = None
         OUT_FNF2 = None
         master_ds = None
-        thisIface.addRasterLayer(outname+'_biomass.tif', '{} biomass'.format())
+        print 'J2'
+        thisIface.addRasterLayer(outname+'_biomass.tif', '{} biomass'.format(outBasename))
 
         try:
             UL_LL = toLonLat(m_ulx, m_uly, projRef )
