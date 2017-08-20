@@ -4,7 +4,6 @@ import time
 import json
 import numpy
 import report_mmu
-from datetime import datetime
 
 # import GDAL/OGR modules
 try:
@@ -379,13 +378,13 @@ def getTemplate(useConversionMapBool, inputFile, conversionMapFile, LANG, FTOT, 
 # ----------
 # main business function
 # ----------
-def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolder, outBasename, kernel_size, biomass_value,
+def RunDegradation_ROADLESS(progress, textOut, thisIface, overwrite, master_img, outFolder, outBasename, kernel_size, biomass_value,
                             biomassDegradPercent, LANG,  startYY1, endYY1, startYY2, endYY2, forest_mmu_fraction,
                             useConversionMapBool, conversionMapFile,
                             useDisagShpBool, disagShp, disagField, useExceptMapBool, exceptMap):
 
-
-    progress.setValue(1)
+    progress.setRange(0, 5+100+5)
+    progress.reset()
     # create a temporary warped filename
     warpedEFMap =os.path.join( tmpdir(), '{}_warped.gtif'.format(outBasename))
 
@@ -396,11 +395,8 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
     warpedExceptMap = os.path.join( tmpdir(), '{}_except.gtif'.format(outBasename))
 
     outname = os.path.join(outFolder, outBasename.replace('.tif',''))
-    print 'A'
 
     try:
-
-
         if useConversionMapBool:
             msg = {'Activity map': master_img, 'MMU size (px)': kernel_size, 'Output name': outname,
                    'Overwrite': overwrite, 'Use conversion map':useConversionMapBool, 'Conversion map file':conversionMapFile}
@@ -409,12 +405,12 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
                    'Overwrite': overwrite, 'Use conversion map': useConversionMapBool, 'Biomass value ':biomass_value,
                    'Degradation emission as percentage of deforestation emission':biomassDegradPercent}
         
-        print 'B'
         kernel_size = int(kernel_size)
-        print 'B1'
-        print biomass_value
         biomass_value = float(biomass_value)
-        print 'B2'
+        # message out
+        textOut.append('Processing starting with:')
+        for ii in msg:
+            textOut.append('{}: {}'.format(ii, msg[ii]))
         # -------------------------------------------------------------------
         # ------ DEL out files and tmp files if necessary  ------------------
         # -------------------------------------------------------------------
@@ -429,7 +425,6 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             if os.path.exists(outname + '_biomass.tif'):
                 if not deleteFile(outname + '_biomass.tif'):
                     return False
-        print 'B3'
         # always delete warped file (in case it was not deleted at the end of the process).
         if os.path.exists(warpedEFMap):
             deleteFile(warpedEFMap+'.aux.xml') # try silently
@@ -440,7 +435,6 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             if not deleteFile(warpedExceptMap):
                 return False
 
-        print 'C'
         # ------------------------------------------------------------------
         # ------------------------- OPEN MASTER  ---------------------------
         # ------------------------------------------------------------------
@@ -469,16 +463,22 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         out_cols=int(master_cols/kernel_size)
         out_rows=int(master_rows/kernel_size)
 
+        # init done
+        progress.setValue(1)
+        textOut.append('Activity map open')
         # ----------------------------------------
         # ---- Warp emission map, if required ----
         # ----------------------------------------
-        print 'D ', useConversionMapBool
         if useConversionMapBool:
             warpError=alignToImg(master_img, conversionMapFile, warpedEFMap, 'near')
             if warpError!= 0:
                 return False
             wefmFID = gdal.Open(warpedEFMap, gdal.GA_ReadOnly)
             inBFM = wefmFID.GetRasterBand(1).ReadAsArray().astype(numpy.float)
+            textOut.append('Biomass factor map open and re-projected')
+
+        # warp Conversion map done
+        progress.setValue(2)
         # ----------------------------------------
         # ---- Warp exception map, if required ----
         # ----------------------------------------
@@ -492,8 +492,9 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             inExcept = exceptFID.GetRasterBand(1).ReadAsArray().astype(numpy.int)
             # get unique values
             uniqExceptCount = uniqValCountRaster(warpedExceptMap, sqrps_ha)
-            
-        print 'E'
+            textOut.append('Exception map processed')
+        # warp except map done
+        progress.setValue(3)
         # ------------------------------------
         # rasterize disaggregation layer if required
         # ------------------------------------
@@ -524,9 +525,11 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
                     ARDegP2Disag[disagElements[ii]] = 0
                     ARDefP1Disag[disagElements[ii]] = 0
                     ARDefP2Disag[disagElements[ii]] = 0
+                textOut.append('Disaggregation shapefile processed')
             except Exception, e:
                 return False
-        print 'F'
+        # disaggregation file processed
+        progress.setValue(4)
         # ------------------------------------
         # Processing: loop reading master_img [and warpedEFMap if needed] by kernels size
         # computation done for each chunk of data
@@ -534,25 +537,18 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         #nodata = (master_ds.GetRasterBand(1).GetNoDataValue())
 
         IN = master_ds.GetRasterBand(1).ReadAsArray().astype(numpy.byte)
-        print 'f1'
-        OUT_CLASS = numpy.zeros( (out_rows, out_cols))
-        print 'f11'
+        OUT_CLASS = numpy.zeros( (out_rows, out_cols) )
         OUT_ND = numpy.zeros( (out_rows, out_cols) ) #IN*0
-        print 'f12'
         OUT_FF = numpy.zeros( (out_rows, out_cols) ) #IN*0
         OUT_NFNF = numpy.zeros( (out_rows, out_cols) ) #IN*0
         OUT_FNF1 = numpy.zeros( (out_rows, out_cols) ) #IN*0
         OUT_FNF2 = numpy.zeros( (out_rows, out_cols) ) #IN*0
-        print 'f1x'
         forestThreshold = forest_mmu_fraction / 100.0
-        print 'F2'
         inGT = master_ds.GetGeoTransform()
         outGT = (inGT[0], inGT[1] * kernel_size, inGT[2], inGT[3], inGT[4], inGT[5]*kernel_size )
-        print 'outGT ',outGT
 
         OUT_EMP1 = numpy.zeros((out_rows, out_cols))
         OUT_EMP2 = numpy.zeros((out_rows, out_cols))
-        print 'F22 ',outGT
         EMDefP1TOT = 0
         EMDefP2TOT = 0
         EMDegP1TOT = 0
@@ -563,17 +559,24 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         PXPTOT = {'Degrad_p1':0, 'Degrad_p2':0, 'Deforest_p1':0, 'Deforest_p2':0, 'FF_10':0, 'FF_4x':0, 'FF_2x':0 , 'FF_3x':0, 'NF_10':0, 'NF_2x':0, 'NF_3x':0, 'NF_4x':0, 'FNF1_4x':0, 'FNF2_4x':0, 'ND_1x':0, 'ND_2x':0, 'ND_3x':0, 'ND_4x':0, 'ND_0x':0}
         FTOT, NFTOT, FNF1TOT, FNF2TOT, NDTOT = [0,0,0,0,0]
 
-        print 'G', outGT
+        # end of init sequence
+        progress.setValue(5)
+        textOut.append('Initialisation')
+
         try :
-            lastProgress = datetime.now()
+            lastProgress = 0
+            lastProgressReported=0
             c, r = 0,0
             thisC, thisR = 0,0
             while c+kernel_size <= master_cols:
-                thisProgress = datetime.now()
-                timeDiff = thisProgress - lastProgress
-                if  timeDiff.seconds> 2:
-                    progress.setValue(int(100*c/master_rows))
+                thisProgress = int(100*c/master_cols)
+                if  thisProgress-lastProgress >= 2:
+                    progress.setValue(5 + thisProgress)
+                    print thisProgress
                     lastProgress = thisProgress
+                if thisProgress - lastProgressReported >=10:
+                    textOut.append('{}% done'.format(thisProgress))
+                    lastProgressReported = thisProgress
                 #print c, master_cols
                 #tmp = master_ds.GetRasterBand(1).ReadAsArray(0, r, kernel_size, out_rows*kernel_size).astype(numpy.byte)
                 #inBFMTMP = wefmFID.GetRasterBand(1).ReadAsArray(0, r, kernel_size, out_rows*kernel_size).astype(numpy.float)
@@ -811,7 +814,6 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             return False
 
         # clean up temporary files
-        print 'H', outGT
         if useConversionMapBool:
             wefmFID = None  # free FID before deleting
         if os.path.exists(warpedEFMap):
@@ -819,26 +821,22 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             if (not deleteFile(warpedEFMap)):
                 return False
 
+        # main processing done
+        progress.setValue(5 + 100)
+
         # --------------------------------------------------------------------------
         # save  UNIT_CLASS
         # --------------------------------------------------------------------------
         try:
-            print 'I'
             driver = gdal.GetDriverByName("GTiff")
             dst_ds = driver.Create( outname+'_class.tif', out_cols, out_rows,1, gdal.GDT_Byte, options = [ 'COMPRESS=LZW','BIGTIFF=IF_SAFER' ]) #GDT_Byte
-            print dst_ds
-            print 'I1'
-            print outGT
-            print 'I2'
             dst_ds.SetGeoTransform( outGT )
             print master_ds.GetProjectionRef() 
             dst_ds.SetProjection( master_ds.GetProjectionRef() )
             #dst_ds.SetMetadata({'Impact_product_type': 'MMU class', 'Impact_operation':"MMU degradation", 'Impact_version':IMPACT.get_version(), 'Impact_band_interpretation':'1:Classification'})
             dst_ds.GetRasterBand(1).SetNoDataValue(0)
             outband = dst_ds.GetRasterBand(1)
-            print 'I2'
             outband.WriteArray(OUT_CLASS)
-            print 'I3'
             # ADD PALETTE
             dst_ds.GetRasterBand(1).SetRasterColorInterpretation(gdal.GCI_PaletteIndex)
             c = gdal.ColorTable()
@@ -866,12 +864,12 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             thisIface.addRasterLayer(outname+'_class.tif', '{} classes'.format(outBasename))
         except Exception, e:
             return False
-
+        # export to raster class is done
+        progress.setValue(5 + 100 + 1)
         # --------------------------------------------------------------------------
         # save  CHANGE
         # --------------------------------------------------------------------------
         try:
-            print 'H2'
             driver = gdal.GetDriverByName("GTiff")
             dst_ds = driver.Create( outname+'_change.tif', out_cols, out_rows, 5, gdal.GDT_UInt16, options = [ 'COMPRESS=LZW','BIGTIFF=IF_SAFER' ]) #GDT_Byte
             dst_ds.SetGeoTransform( outGT )
@@ -891,14 +889,13 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         OUT_FF = None
         OUT_NFNF = None
 
-        print 'H23'
         thisIface.addRasterLayer(outname+'_change.tif', '{} change'.format(outBasename) )
-
+        # export to change raster done
+        progress.setValue(5 + 100 + 2)
         # --------------------------------------------------------------------------
         # save  BIOMASS
         # --------------------------------------------------------------------------
         try:
-            print 'J1'
             driver = gdal.GetDriverByName("GTiff")
             dst_ds = driver.Create( outname+'_biomass.tif', out_cols, out_rows,3, gdal.GDT_Float32, options = [ 'COMPRESS=LZW','BIGTIFF=IF_SAFER' ])
             dst_ds.SetGeoTransform( outGT )
@@ -910,7 +907,7 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
                 dst_ds.GetRasterBand(2).WriteArray(OUT_EMP2)
                 dst_ds.GetRasterBand(3).WriteArray( OUT_EMP1 + OUT_EMP2 )
             else:
-                dst_ds.SetMetadata({'Impact_product_type': 'MMU biomass','Impact_operation':"degradation", 'Impact_band_interpretation':'1:FNF1*biomass_factor, 2:FNF2*biomass_factor, 3:(FNF1+FNF2)*biomass_factor'})
+                #dst_ds.SetMetadata({'Impact_product_type': 'MMU biomass','Impact_operation':"degradation", 'Impact_band_interpretation':'1:FNF1*biomass_factor, 2:FNF2*biomass_factor, 3:(FNF1+FNF2)*biomass_factor'})
                 dst_ds.GetRasterBand(1).WriteArray(OUT_FNF1 * biomass_value)
                 dst_ds.GetRasterBand(2).WriteArray(OUT_FNF2 * biomass_value)
                 dst_ds.GetRasterBand(3).WriteArray((OUT_FNF1 + OUT_FNF2)*biomass_value)
@@ -924,8 +921,9 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
         OUT_FNF1 = None
         OUT_FNF2 = None
         master_ds = None
-        print 'J2'
         thisIface.addRasterLayer(outname+'_biomass.tif', '{} biomass'.format(outBasename))
+        # export to BIOMASS raster
+        progress.setValue(5 + 100 + 3)
 
         try:
             UL_LL = toLonLat(m_ulx, m_uly, projRef )
@@ -951,9 +949,13 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             text_file = open(outname + "_report_" + LANG + '.html', "w")
             text_file.write(report)
             text_file.close()
+            # inject in textOut
+            textOut.append('')
+            textOut.insertHtml(report)
         except Exception, e:
             pass
-
+        # report generated
+        progress.setValue(5 + 100 + 4)
     except Exception,e:
 
         dst_ds = None
@@ -967,3 +969,8 @@ def RunDegradation_ROADLESS(progress, thisIface, overwrite, master_img, outFolde
             os.remove(outname+'_tmp.aux.xml')
 
         return False
+    # all job done
+    progress.setValue(5 + 100 + 5)
+    return True
+
+# end of script

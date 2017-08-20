@@ -32,6 +32,7 @@ import os.path
 import doMMUCounting
 from os.path import expanduser
 import string
+import webbrowser
 
 
 class Carborama:
@@ -378,6 +379,8 @@ class Carborama:
         self.UIParams['kernel_size'] = self.dlg.sbMMUPixel.value()
         self.UIParams['forest_mmu_fraction'] = self.dlg.sbTreeFraction.value()
 
+        # focus on first tab
+        self.dlg.tabWidget.setCurrentWidget(self.dlg.tabInputs)
 
         # connect buttons
         self.dlg.buttonActivityMapDisk.clicked.connect(lambda: self.getFileFromDisk('master_img','lineActivityMap'))
@@ -402,6 +405,8 @@ class Carborama:
         self.dlg.buttonOutputFolder.clicked.connect(lambda: self.getFolder('outFolder'))
         self.dlg.lineOutputFolder.textChanged.connect(lambda: self.getTextValue('outFolder', self.dlg.lineOutputFolder.text()) )
 
+        self.dlg.buttonRun.clicked.connect(self.doProcessing)
+
     def alert(self, message):
         thisMessage = QMessageBox()
         thisMessage.setWindowTitle('Critical')
@@ -410,6 +415,26 @@ class Carborama:
         thisMessage.setStandardButtons(QMessageBox.Ok)
         thisMessage.setText(message)
         result = thisMessage.exec_()
+
+    def doProcessing(self):
+        self.dlg.tabWidget.setCurrentWidget(self.dlg.tabExec)
+        oktorun, msgoktorun = self.OkToRun()
+        if oktorun:
+            for ii in self.UIParams:
+                print ii,' ', self.UIParams[ii]
+ 
+            doMMUCounting.RunDegradation_ROADLESS(self.dlg.progressBar, self.dlg.textExec, self.iface,
+                self.UIParams['overwrite'],
+                self.UIParams['master_img'],
+                self.UIParams['outFolder'], self.UIParams['outBasename'], 
+                self.UIParams['kernel_size'],
+                self.UIParams['biomass_value'], self.UIParams['biomassDegradPercent'],
+                self.UIParams['language'], 
+                self.UIParams['startYY1'], self.UIParams['endYY1'], self.UIParams['startYY2'], self.UIParams['endYY2'], 
+                self.UIParams['forest_mmu_fraction'],
+                self.UIParams['useConversionMapBool'], self.UIParams['conversionMap'],
+                self.UIParams['useDisagShpBool'], self.UIParams['disagShp'], self.UIParams['disagField'],
+                self.UIParams['useExceptMap'], self.UIParams['exceptMap'])
 
     def run(self):
         """Run method that performs all the real work"""
@@ -431,30 +456,5 @@ class Carborama:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
+            print 'result ', result
 
-            oktorun, msgoktorun = self.OkToRun()
-            if oktorun:
-                for ii in self.UIParams:
-                    print ii,' ', self.UIParams[ii]
-                progressMessageBar = self.iface.messageBar().createMessage("Computing carbon emmissions")
-                progress = QProgressBar()
-                progress.setMaximum(100)
-                progress.setAlignment(QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter)
-                progressMessageBar.layout().addWidget(progress)
-                self.iface.messageBar().pushWidget(progressMessageBar, self.iface.messageBar().INFO)
-                doMMUCounting.RunDegradation_ROADLESS(progress, self.iface,
-                    self.UIParams['overwrite'],
-                    self.UIParams['master_img'],
-                    self.UIParams['outFolder'], self.UIParams['outBasename'], 
-                    self.UIParams['kernel_size'],
-                    self.UIParams['biomass_value'], self.UIParams['biomassDegradPercent'],
-                    self.UIParams['language'], 
-                    self.UIParams['startYY1'], self.UIParams['endYY1'], self.UIParams['startYY2'], self.UIParams['endYY2'], 
-                    self.UIParams['forest_mmu_fraction'],
-                    self.UIParams['useConversionMapBool'], self.UIParams['conversionMap'],
-                    self.UIParams['useDisagShpBool'], self.UIParams['disagShp'], self.UIParams['disagField'],
-                    self.UIParams['useExceptMap'], self.UIParams['exceptMap'])
-                self.iface.messageBar().clearWidgets()
-            else:
-                self.alert(msgoktorun)
-            
